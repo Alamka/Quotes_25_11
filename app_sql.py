@@ -1,51 +1,55 @@
+import sqlite3
 from pathlib import Path
 from random import choice
 from flask import Flask, request, g
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-
-BASE_DIR = Path(__file__).parent
-#DATABASE = BASE_DIR / "test.db"
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{BASE_DIR / 'main.db'}"
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.app_context().push()
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
+BASE_DIR = Path(__file__).parent
+DATABASE = BASE_DIR / "test.db"
 
 
-class QuoteModel(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    author = db.Column(db.String(32), unique=False)
-    text = db.Column(db.String(255), unique=False)
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+    return db
 
-    def __init__(self, author, text):
-        self.author = author
-        self.text  = text
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
-    def __repr__(self):
-        return f"Quote a:{self.author} t:{self.text}"
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "author": self.author,
-            "text": self.text,
-        }
+def find_quote(quote_id):
+    cur = get_db().cursor()
+    select_quote = "SELECT * from quotes WHERE id=?"
+    cur.execute(select_quote, (quote_id,))
+    value = cur.fetchone()
+    # закрывать курсор не надо, потому что у нас простое приложение
+    # при закрытии подключения курсоры закрываются автоматически
+    # cur.close()
+    return value
+
+
+def to_dict(value):
+    keys = ["id", "author", "text", "rating"]
+    return dict(zip(keys, value))
 
 
 @app.route("/quotes/")
-#       to_dict()      flask
-# object --------> dict -----> json
 def get_quotes():
-    quotes = QuoteModel.query.all()
-    quotes_dict = []
-    for quote in quotes:
-        quotes_dict.append(quote.to_dict())
-    return quotes_dict
+    cur = get_db().cursor()
+    select_quotes = "SELECT * from quotes"
+    cur.execute(select_quotes)
+    values = cur.fetchall()
+    quotes = []
+    for value in values:
+        quotes.append(to_dict(value))
+
+    return quotes
 
 
 @app.route("/quotes/filter/")

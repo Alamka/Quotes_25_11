@@ -25,3 +25,5 @@
 .idea
 
 api_venv/
+
+__pycache__/
