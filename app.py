@@ -21,10 +21,11 @@ class QuoteModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     author = db.Column(db.String(32), unique=False)
     text = db.Column(db.String(255), unique=False)
+    rate = db.Column(db.Integer)
 
     def __init__(self, author, text):
         self.author = author
-        self.text  = text
+        self.text = text
 
     def __repr__(self):
         return f"Quote a:{self.author} t:{self.text}"
@@ -34,6 +35,7 @@ class QuoteModel(db.Model):
             "id": self.id,
             "author": self.author,
             "text": self.text,
+            "rate": self.rate
         }
 
 
@@ -46,6 +48,71 @@ def get_quotes():
     for quote in quotes:
         quotes_dict.append(quote.to_dict())
     return quotes_dict
+
+
+@app.route("/quotes/<int:quote_id>/")
+def get_quote_by_id(quote_id):
+    value = QuoteModel.query.get(quote_id)
+    if value:
+        return value.to_dict()
+
+    return f"Quote with id={quote_id} not found", 404
+
+
+@app.route("/quotes/", methods=['POST'])
+def create_quote():
+    data = request.json
+
+    #quote = QuoteModel(author=data["author"], text=data["text"])
+    quote = QuoteModel(**data)
+
+    db.session.add(quote)
+    db.session.commit()
+
+    return quote.to_dict(), 201
+
+
+@app.route("/quotes/<int:quote_id>/", methods=['PUT'])
+def edit_quote(quote_id):
+    new_data = request.json
+
+    quote = QuoteModel.query.get(quote_id)
+    if quote is None:
+        return f"Quote with id={quote_id} not found", 404
+
+    for key, value in new_data.items():
+        setattr(quote, key, value)
+
+    #if new_data.get("author"):
+    #    quote.author = new_data["author"]
+    #if new_data.get("text"):
+    #    quote.text = new_data["text"]
+    #if new_data.get("rate") and new_data["rate"] >= 1 and new_data["rate"] <= 5:
+    #    quote.rate = new_data["rate"]
+
+    db.session.commit()
+    return quote.to_dict(), 201
+
+
+
+@app.route("/quotes/<int:quote_id>/", methods=['DELETE'])
+def delete_quote(quote_id):
+    sql_quote = "DELETE FROM quotes WHERE id=?;"
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(sql_quote, (quote_id, ))
+    conn.commit()
+    if cur.rowcount > 0:
+        return f"Quote with id={quote_id} is deleted.", 200
+
+    return f"Quote with id={quote_id} not found", 404
+
+
+
+
+
+
+
 
 
 @app.route("/quotes/filter/")
@@ -91,19 +158,6 @@ def get_count_quotes():
     return {"count": row[0]}
 
 
-@app.route("/quotes/<int:quote_id>/")
-def get_quote_by_id(quote_id):
-    value = find_quote(quote_id)
-
-    # Если нужно проверить конкретно на None
-    # if value is not None:
-
-    if value:
-        return to_dict(value)
-
-    return f"Quote with id={quote_id} not found", 404
-
-
 @app.route("/quotes/random/v1/")
 def get_quote_random_v1():
     cur = get_db().cursor()
@@ -127,84 +181,6 @@ def get_quote_random_v2():
         return to_dict(value)
 
     return f"Quotes not found", 404
-
-
-
-@app.route("/quotes/", methods=['POST'])
-def create_quote():
-    data = request.json
-
-    new_quote = {}
-    if "author" in data:
-        new_quote.update({"author": data["author"]})
-    else:
-        return f"New quote must have 'author'", 404
-    if "text" in data:
-        new_quote.update({"text": data["text"]})
-    else:
-        return f"New quote must have 'text'", 404
-    if "rating" in data and data["rating"] >=1 and data["rating"] <= 5:
-        new_quote.update({"rating": data["rating"]})
-    else:
-        new_quote.update({"rating": 1})
-
-    sql_quote = "INSERT INTO quotes (author,text,rating) VALUES (?, ?, ?)"
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(sql_quote, (new_quote["author"], new_quote["text"], new_quote["rating"]))
-    conn.commit()
-
-    new_quote["id"] = cur.lastrowid
-    return new_quote, 201
-
-
-@app.route("/quotes/<int:quote_id>/", methods=['PUT'])
-def edit_quote(quote_id):
-    new_data = request.json
-
-    update_quote = "UPDATE quotes SET {} WHERE id=?"
-    quote = []
-    msg = []
-    if new_data.get("author"):
-        quote.append(new_data["author"])
-        msg.append("author = ?")
-    if new_data.get("text"):
-        quote.append(new_data["text"])
-        msg.append("text = ?")
-    if new_data.get("rating") and new_data["rating"] >= 1 and new_data["rating"] <= 5:
-        quote.append(new_data["rating"])
-        msg.append("rating = ?")
-
-    if len(quote) == 0:
-        return f"No data to change", 404
-
-    quote.append(quote_id)
-
-    conn = get_db()
-    cur = conn.cursor()
-    sql_quote = update_quote.format(", ".join(msg))
-    cur.execute(sql_quote, (quote))
-    conn.commit()
-    if cur.rowcount > 0:
-        value = find_quote(quote_id)
-        if value:
-            return to_dict(value), 200
-
-    return f"Quote with id={quote_id} not found", 404
-
-
-@app.route("/quotes/<int:quote_id>/", methods=['DELETE'])
-def delete_quote(quote_id):
-    sql_quote = "DELETE FROM quotes WHERE id=?;"
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(sql_quote, (quote_id, ))
-    conn.commit()
-    if cur.rowcount > 0:
-        return f"Quote with id={quote_id} is deleted.", 200
-
-    return f"Quote with id={quote_id} not found", 404
-
 
 
 
