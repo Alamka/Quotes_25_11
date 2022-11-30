@@ -3,6 +3,7 @@ from random import choice
 from flask import Flask, request, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from sqlalchemy.sql.expression import func
 
 BASE_DIR = Path(__file__).parent
 #DATABASE = BASE_DIR / "test.db"
@@ -23,9 +24,10 @@ class QuoteModel(db.Model):
     text = db.Column(db.String(255), unique=False)
     rate = db.Column(db.Integer)
 
-    def __init__(self, author, text):
+    def __init__(self, author, text, rate=1):
         self.author = author
         self.text = text
+        self.rate = rate
 
     def __repr__(self):
         return f"Quote a:{self.author} t:{self.text}"
@@ -81,14 +83,9 @@ def edit_quote(quote_id):
         return f"Quote with id={quote_id} not found", 404
 
     for key, value in new_data.items():
+        #if key == "rate" and not (value >= 1 and value <= 5):
+        #    continue
         setattr(quote, key, value)
-
-    #if new_data.get("author"):
-    #    quote.author = new_data["author"]
-    #if new_data.get("text"):
-    #    quote.text = new_data["text"]
-    #if new_data.get("rate") and new_data["rate"] >= 1 and new_data["rate"] <= 5:
-    #    quote.rate = new_data["rate"]
 
     db.session.commit()
     return quote.to_dict(), 201
@@ -97,15 +94,13 @@ def edit_quote(quote_id):
 
 @app.route("/quotes/<int:quote_id>/", methods=['DELETE'])
 def delete_quote(quote_id):
-    sql_quote = "DELETE FROM quotes WHERE id=?;"
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(sql_quote, (quote_id, ))
-    conn.commit()
-    if cur.rowcount > 0:
-        return f"Quote with id={quote_id} is deleted.", 200
+    quote = QuoteModel.query.get(quote_id)
+    if quote is None:
+        return f"Quote with id={quote_id} not found", 404
+    db.session.delete(quote)
+    db.session.commit()
 
-    return f"Quote with id={quote_id} not found", 404
+    return f"Quote with id={quote_id} is deleted.", 200
 
 
 
@@ -120,66 +115,43 @@ def filter_quotes():
     args = request.args
     # /quotes/filter?author=Tom&rating=5
     author = args.get('author')
-    rating = args.get('rating')
+    rate = args.get('rate')
 
-    cur = get_db().cursor()
-    sql_dict = None
-    if None not in (author, rating):
-        sql_quote = "SELECT * from quotes WHERE author=? AND rating=?"
-        sql_dict = (author, rating,)
+    if None not in (author, rate):
+        quotes = db.session.query(QuoteModel)\
+            .filter(QuoteModel.author == author, QuoteModel.rate == rate)\
+            .all()
 
     elif author is not None:
-        sql_quote = "SELECT * from quotes WHERE author=?"
-        sql_dict = (author, )
+        quotes = db.session.query(QuoteModel) \
+            .filter(QuoteModel.author == author) \
+            .all()
 
-    elif rating is not None:
-        sql_quote = "SELECT * from quotes WHERE rating=?"
-        sql_dict = (rating, )
+    elif rate is not None:
+        quotes = db.session.query(QuoteModel) \
+            .filter(QuoteModel.rate == rate) \
+            .all()
 
-    quote_filter = []
-    if sql_dict:
-        cur.execute(sql_quote, sql_dict)
-        values = cur.fetchall()
-        if values:
-            for value in values:
-                quote_filter.append(to_dict(value))
-            return quote_filter
+    if not quotes:
+        return "Not found", 404
 
-    return "Not found", 404
+    quotes_dict = []
+    for quote in quotes:
+        quotes_dict.append(quote.to_dict())
+    return quotes_dict
 
 
 @app.route("/quotes/count/")
 def get_count_quotes():
-    cur = get_db().cursor()
-    sql_quote = "SELECT count(*) from quotes"
-    cur.execute(sql_quote)
-    row = cur.fetchone()
-
-    return {"count": row[0]}
+    count_quotes = db.session.query(QuoteModel).count()
+    return {"count": count_quotes}
 
 
-@app.route("/quotes/random/v1/")
-def get_quote_random_v1():
-    cur = get_db().cursor()
-    sql_quote = "SELECT id from quotes"
-    cur.execute(sql_quote)
-    values = cur.fetchall()
-    if values:
-        quote_id = choice(values)[0]
-        value = find_quote(quote_id)
-        return to_dict(value)
-
-    return f"Quotes not found", 404
-
-@app.route("/quotes/random/v2/")
+@app.route("/quotes/random/")
 def get_quote_random_v2():
-    cur = get_db().cursor()
-    sql_quote = "SELECT * FROM quotes ORDER BY RANDOM() LIMIT 1;"
-    cur.execute(sql_quote)
-    value = cur.fetchone()
-    if value:
-        return to_dict(value)
-
+    quote = db.session.query(QuoteModel).order_by(func.random()).first()
+    if quote:
+        return quote.to_dict()
     return f"Quotes not found", 404
 
 
