@@ -18,47 +18,28 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 
-class AuthorModel(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(32), unique=True)
-    quotes = db.relationship('QuoteModel', backref='author', lazy='dynamic', cascade="all, delete-orphan")
-
-    def __init__(self, name):
-        self.name = name
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name
-        }
-
-
 class QuoteModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    author_id = db.Column(db.Integer, db.ForeignKey(AuthorModel.id))
+    author = db.Column(db.String(32), unique=False)
     text = db.Column(db.String(255), unique=False)
+    rate = db.Column(db.Integer)
 
-    def __init__(self, author, text):
-        self.author_id = author.id
+    def __init__(self, author, text, rate=1):
+        self.author = author
         self.text = text
+        self.rate = rate
+
+    def __repr__(self):
+        return f"Quote a:{self.author} t:{self.text}"
 
     def to_dict(self):
         return {
             "id": self.id,
-            "author": self.author.to_dict(),
-            "text": self.text
+            "author": self.author,
+            "text": self.text,
+            "rate": self.rate
         }
 
-
-
-# AUTHORS handlers
-
-
-
-
-
-
-# QUOTES handlers
 
 @app.route("/quotes/")
 #       to_dict()      flask
